@@ -37,6 +37,7 @@
 #include "ijkplayer_android_def.h"
 #include "ijkplayer_android.h"
 #include "ijksdl/android/ijksdl_android_jni.h"
+#include <android/bitmap.h>
 #include "ijksdl/android/ijksdl_codec_android_mediadef.h"
 #include "ijkavformat/ijkavformat.h"
 
@@ -50,6 +51,7 @@
     JNI_CHECK_GOTO((retval == 0), env, JNI_IJK_MEDIA_EXCEPTION, NULL, label);
 
 static JavaVM* g_jvm;
+static jmethodID g_clazz_onNativeVideoFrame;
 
 typedef struct player_fields_t {
     pthread_mutex_t mutex;
@@ -360,7 +362,110 @@ LABEL_RETURN:
     ijkmp_dec_ref_p(&mp);
     return retval;
 }
+static jboolean
+IjkMediaPlayer_getCurrentFrame(JNIEnv *env, jobject thiz, jobject bitmap)
+{
+    jboolean retval = JNI_TRUE;
+    IjkMediaPlayer *mp = jni_get_media_player(env, thiz);
+    JNI_CHECK_GOTO(mp, env, NULL, "mpjni: getCurrentFrame: null mp", LABEL_RETURN);
 
+    uint8_t *frame_buffer = NULL;
+
+    if (0 > AndroidBitmap_lockPixels(env, bitmap, (void **)&frame_buffer)) {
+        (*env)->ThrowNew(env, "java/io/IOException", "Unable to lock pixels.");
+        return JNI_FALSE;
+    }
+
+    ijkmp_get_current_frame(mp, frame_buffer);
+
+    if (0 > AndroidBitmap_unlockPixels(env, bitmap)) {
+        (*env)->ThrowNew(env, "java/io/IOException", "Unable to unlock pixels.");
+        return JNI_FALSE;
+    }
+
+    LABEL_RETURN:
+    ijkmp_dec_ref_p(&mp);
+    return retval;
+}
+
+
+static jint
+IjkMediaPlayer_startRecord(JNIEnv *env, jobject thiz,jstring file)
+{
+    jint retval = 0;
+    IjkMediaPlayer *mp = jni_get_media_player(env, thiz);
+    JNI_CHECK_GOTO(mp, env, NULL, "mpjni: startRecord: null mp", LABEL_RETURN);
+    const char *nativeString = (*env)->GetStringUTFChars(env, file, 0);
+    retval = ijkmp_start_record(mp,nativeString);
+
+    LABEL_RETURN:
+    ijkmp_dec_ref_p(&mp);
+    return retval;
+}
+
+static void video_frame_callback(void* opaque, AVFrame* frame, float fps, int64_t dts)
+{
+    JNIEnv *env = NULL;
+    if (JNI_OK != SDL_JNI_SetupThreadEnv(&env)) {
+        return;
+    }
+
+    jobject weakThiz = (jobject)opaque;
+    if (!weakThiz || !env) {
+        return;
+    }
+
+    // 创建 ByteBuffer
+    jobject byte_buffer = (*env)->NewDirectByteBuffer(env, frame->data[0], frame->linesize[0] * frame->height);
+
+    // 调用 Java 方法
+    (*env)->CallVoidMethod(env, weakThiz, g_clazz_onNativeVideoFrame,
+                           byte_buffer,
+                           (jlong)frame->pts,
+                           (jlong)dts,
+                           (jint)frame->pict_type,  // 使用 pict_type 作为 flags
+                           (jint)frame->width,
+                           (jint)frame->height,
+                           (jint)frame->format,
+                           (jfloat)fps);  // 使用 format 作为 codecType
+
+    (*env)->DeleteLocalRef(env, byte_buffer);
+}
+
+static void IjkMediaPlayer_setVideoFrameCallback(JNIEnv *env, jobject thiz, jboolean enable)
+{
+    IjkMediaPlayer *mp = jni_get_media_player(env, thiz);
+    jobject weak_thiz = (*env)->NewGlobalRef(env, thiz);
+    ijkmp_set_video_frame_callback(mp, enable ? video_frame_callback : NULL, weak_thiz);
+}
+
+
+static jboolean
+IjkMediaPlayer_isRecord(JNIEnv *env, jobject thiz) {
+    jboolean isRecord = false;
+    IjkMediaPlayer *mp = jni_get_media_player(env, thiz);
+    JNI_CHECK_GOTO(mp, env, NULL, "mpjni: isRecord: null mp", LABEL_RETURN);
+
+    isRecord = ijkmp_is_record(mp);
+
+    LABEL_RETURN:
+    ijkmp_dec_ref_p(&mp);
+    return isRecord;
+}
+
+static jint
+IjkMediaPlayer_stopRecord(JNIEnv *env, jobject thiz)
+{
+    jint retval = 0;
+    IjkMediaPlayer *mp = jni_get_media_player(env, thiz);
+    JNI_CHECK_GOTO(mp, env, NULL, "mpjni: stopRecord: null mp", LABEL_RETURN);
+
+    retval = ijkmp_stop_record(mp);
+
+    LABEL_RETURN:
+    ijkmp_dec_ref_p(&mp);
+    return retval;
+}
 static void
 IjkMediaPlayer_release(JNIEnv *env, jobject thiz)
 {
@@ -1131,6 +1236,8 @@ LABEL_RETURN:
 
 
 
+
+
 // ----------------------------------------------------------------------------
 
 static JNINativeMethod g_methods[] = {
@@ -1152,6 +1259,13 @@ static JNINativeMethod g_methods[] = {
     { "isPlaying",              "()Z",      (void *) IjkMediaPlayer_isPlaying },
     { "getCurrentPosition",     "()J",      (void *) IjkMediaPlayer_getCurrentPosition },
     { "getDuration",            "()J",      (void *) IjkMediaPlayer_getDuration },
+
+    { "getCurrentFrame",        "(Landroid/graphics/Bitmap;)Z",      (void *) IjkMediaPlayer_getCurrentFrame },
+    { "startRecord",            "(Ljava/lang/String;)I",      (void *) IjkMediaPlayer_startRecord },
+    { "nativeSetVideoFrameCallback", "(Z)V", (void *) IjkMediaPlayer_setVideoFrameCallback },
+    { "isRecord",            "()Z",      (void *) IjkMediaPlayer_isRecord },
+    { "stopRecord",             "()I",      (void *) IjkMediaPlayer_stopRecord },
+
     { "_release",               "()V",      (void *) IjkMediaPlayer_release },
     { "_reset",                 "()V",      (void *) IjkMediaPlayer_reset },
     { "setVolume",              "(FF)V",    (void *) IjkMediaPlayer_setVolume },
@@ -1203,12 +1317,11 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
     // FindClass returns LocalReference
     IJK_FIND_JAVA_CLASS(env, g_clazz.clazz, JNI_CLASS_IJKPLAYER);
     (*env)->RegisterNatives(env, g_clazz.clazz, g_methods, NELEM(g_methods) );
-
     ijkmp_global_init();
     ijkmp_global_set_inject_callback(inject_callback);
 
     FFmpegApi_global_init(env);
-
+    g_clazz_onNativeVideoFrame = (*env)->GetMethodID(env, g_clazz.clazz, "onNativeVideoFrame","(Ljava/nio/ByteBuffer;JJIIIIF)V");
     return JNI_VERSION_1_4;
 }
 

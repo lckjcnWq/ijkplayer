@@ -27,7 +27,6 @@
 #include "../../ff_ffpipenode.h"
 #include "../../ff_ffpipeline.h"
 #include "ijksdl/ijksdl_vout.h"
-
 typedef struct FFPlayer FFPlayer;
 
 IJKFF_Pipenode *ffpipenode_create_video_decoder_from_android_mediacodec(FFPlayer *ffp, IJKFF_Pipeline *pipeline, SDL_Vout *vout);

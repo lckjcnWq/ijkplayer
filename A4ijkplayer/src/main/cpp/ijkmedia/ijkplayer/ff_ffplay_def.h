@@ -552,6 +552,7 @@ inline static void ffp_reset_demux_cache_control(FFDemuxCacheControl *dcc)
 /* ffplayer */
 struct IjkMediaMeta;
 struct IJKFF_Pipeline;
+typedef void (*VideoFrameCallback)(void* opaque, AVFrame* frame, float fps, int64_t dts);
 typedef struct FFPlayer {
     const AVClass *av_class;
 
@@ -720,7 +721,35 @@ typedef struct FFPlayer {
     char *mediacodec_default_name;
     int ijkmeta_delay_init;
     int render_wait_start;
+    int is_rtsp_stream;
+
+    /* Drop frames */
+    int drop_frame_interval;
+    int frame_counter;
+    float skip_first_duration;
+    AVFormatContext *m_ofmt_ctx;        // 用于输出的AVFormatContext结构体
+    AVOutputFormat *m_ofmt;
+    pthread_mutex_t record_mutex;       // 锁
+    int is_record;                      // 是否在录制
+    int record_error;
+    int record_mutex_initialized;       //录制是否初始化
+
+    AVCodecContext *aac_convert_ctx;
+
+    int is_first;                       // 第一帧数据
+    int64_t start_v_pts;                // 开始录制时pts 视频
+    int64_t start_v_dts;                // 开始录制时dts 视频
+    int64_t start_a_pts;                // 开始录制时pts 音频
+    int64_t start_a_dts;                // 开始录制时dts 音频
+    int64_t *start_pts;
+    int64_t *start_dts;
+    VideoFrameCallback video_frame_callback;
+    void *video_frame_opaque;
+    int *stream_mapping;
+    int stream_mapping_size;
+
 } FFPlayer;
+
 
 #define fftime_to_milliseconds(ts) (av_rescale(ts, 1000, AV_TIME_BASE))
 #define milliseconds_to_fftime(ms) (av_rescale(ms, AV_TIME_BASE, 1000))

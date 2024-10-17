@@ -27,13 +27,14 @@
 #include <assert.h>
 #include "ijksdl/ijksdl.h"
 #include "ff_fferror.h"
-#include "ff_ffplay.h"
+//#include "ff_ffplay.h"
 #include "ijkplayer.h"
+#include "ff_ffplay_def.h"
 
 struct IjkMediaPlayer {
     volatile int ref_count;
     pthread_mutex_t mutex;
-    FFPlayer *ffplayer;
+    struct FFPlayer *ffplayer;
 
     int (*msg_loop)(void*);
     SDL_Thread *msg_thread;

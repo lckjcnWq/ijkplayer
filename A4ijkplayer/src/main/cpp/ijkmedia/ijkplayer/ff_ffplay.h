@@ -114,7 +114,13 @@ float     ffp_get_property_float(FFPlayer *ffp, int id, float default_value);
 void      ffp_set_property_float(FFPlayer *ffp, int id, float value);
 int64_t   ffp_get_property_int64(FFPlayer *ffp, int id, int64_t default_value);
 void      ffp_set_property_int64(FFPlayer *ffp, int id, int64_t value);
-
+//录制相关
+int       ffp_start_recording_l(FFPlayer *ffp, const char *file_name);
+int       ffp_stop_recording_l(FFPlayer *ffp);
+bool      ffp_is_recording_l(FFPlayer *ffp);
+int       ffp_record_file(FFPlayer *ffp, AVPacket *packet);
+void      ffp_get_current_frame_l(FFPlayer *ffp, uint8_t *frame_buf);
+int       ffp_record_isfinished_l(FFPlayer *ffp);
 // must be freed with free();
 struct IjkMediaMeta *ffp_get_meta_l(FFPlayer *ffp);
 

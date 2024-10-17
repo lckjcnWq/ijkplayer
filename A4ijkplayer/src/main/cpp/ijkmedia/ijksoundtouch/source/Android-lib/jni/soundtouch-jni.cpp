@@ -257,3 +257,50 @@ extern "C" DLL_PUBLIC int Java_net_surina_soundtouch_SoundTouch_processFile(JNIE
 
 	return 0;
 }
+
+extern "C" DLL_PUBLIC int Java_net_surina_soundtouch_SoundTouch_processStream(JNIEnv *env, jobject thiz, jlong handle, jbyteArray pcmArray, jint sampleRate, jint channels)
+{
+    SoundTouch *ptr = (SoundTouch *)handle;
+
+    // 异常安全：使用unique_ptr管理sampleBuffer的内存
+    std::unique_ptr<SAMPLETYPE[]> sampleBuffer;
+
+    // 获取并检查PCM数组的长度
+    jsize pcmSize = env->GetArrayLength(pcmArray);
+    if (pcmSize <= 0) {
+        return -1; // 如果数组为空，直接返回
+    }
+
+    // 错误处理：检查并设置SoundTouch参数
+    try {
+        // 计算样本数量
+        int nSamples = pcmSize / (sizeof(SAMPLETYPE) * sampleRate);
+        // 在堆上动态分配缓冲区
+        sampleBuffer.reset(new SAMPLETYPE[nSamples * channels]);
+        // 从Java数组复制PCM数据
+        env->GetByteArrayRegion(pcmArray, 0, pcmSize, reinterpret_cast<jbyte *>(sampleBuffer.get()));
+        // 处理PCM数据
+        ptr->putSamples(sampleBuffer.get(), nSamples);
+        // 从SoundTouch获取处理后的样本
+        int receivedSamples = 0;
+        do {
+            nSamples = ptr->receiveSamples(sampleBuffer.get() + receivedSamples, nSamples - receivedSamples);
+            receivedSamples += nSamples;
+        } while (nSamples != 0);
+
+        // 将处理后的数据写回Java数组
+        env->SetByteArrayRegion(pcmArray, 0, receivedSamples * sizeof(SAMPLETYPE) * channels, reinterpret_cast<jbyte *>(sampleBuffer.get()));
+    } catch (const std::exception& e) {
+        // 异常处理：记录错误日志
+        __android_log_print(ANDROID_LOG_ERROR, "SOUNDTOUCH", "Exception in processMultiChannelPCM: %s", e.what());
+        return -1;
+    }
+    return 0;
+}
+
+extern "C" DLL_PUBLIC void Java_net_surina_soundtouch_SoundTouch_setAudioConfig(JNIEnv *env, jobject thiz, jlong handle, jint sampleRate, jint channels)
+{
+    SoundTouch *ptr = (SoundTouch *)handle;
+    ptr->setSampleRate(sampleRate);
+    ptr->setChannels(channels);
+}
