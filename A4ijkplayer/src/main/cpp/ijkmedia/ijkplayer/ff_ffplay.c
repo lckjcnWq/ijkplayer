@@ -5252,10 +5252,10 @@ int ffp_start_recording_l(FFPlayer *ffp, const char *file_name) {
         for (int i = 0; i < is->ic->nb_streams; i++) {
         // 对照输入流创建输出流通道
         AVStream *in_stream = is->ic->streams[i];
-        if (in_stream->codecpar->codec_type != AVMEDIA_TYPE_VIDEO) {
+        /*if (in_stream->codecpar->codec_type != AVMEDIA_TYPE_VIDEO) {
         ffp->stream_mapping[i] = -1;
         continue;
-        }
+        }*/
         ffp->stream_mapping[i] = stream_index++;
 
         AVStream *out_stream = avformat_new_stream(ffp->m_ofmt_ctx, in_stream->codec->codec);
@@ -5338,10 +5338,10 @@ int ffp_record_file(FFPlayer *ffp, AVPacket *packet) {
     }
 
     int out_stream_index = ffp->stream_mapping[packet->stream_index];
-    if (out_stream_index < 0) {
+    /*if (out_stream_index < 0) {
         pthread_mutex_unlock(&ffp->record_mutex);
         return 0;
-    }
+    }*/
 
     AVStream *in_stream = is->ic->streams[packet->stream_index];
     AVStream *out_stream = ffp->m_ofmt_ctx->streams[out_stream_index];
